@@ -5,11 +5,87 @@
 #include <automate_stdio.h>
 #include <coords_stdio.h>
 
-/*
+/* Argumtent de la fonction calcule_gen_suiv */
+typedef struct args_s{
+
+  int i; //ordonnée de la cellule qui évolue
+  int j; //abscisse de la cellule qui évolue
+  automate_t * automate; //pointeur sur l'automate -- variable critique commun à tout les threads --
+  int * n; //pointeur sur le numéro de la génération en cours -- variable critique commun à tout les threads --
+  int * n_c; //pointeur sur le nombre de cellules déjà modifiés pour cette génération -- variable critique commun à tout les threads --
+  int nb_generations; //nombre de génération
+  int nb_cellule; //nombre de cellule dans l'automate
+  cellule_regles_t regles; //regles de l'automate
+  pthread_mutex_t * mutex; //mutex des threads
+
+} args_t;
+
+/*!
  * \file automate_asynchrone_memoire_stdio.c
  * \brief Exécution d'un Automate Asynchrone avec Mémoire sur sortie standard.
  * Les cellules sont gérées indépendamment par des threads
  */
+
+/**
+ * Calcule la génération suivante
+ * les variables critiques sont uniquement gérer à l'intérieur de la section critique
+ *
+ * \param args arguments de la fonction
+ */
+void calcule_gen_suiv(void * arguments){
+
+  /* Récupération des arguments */
+  args_t * args = (args_t *)arguments;
+
+  booleen_t fini = FAUX;
+  int noerr = CORRECT;
+
+  while(!fini){
+
+    /* Entrée section critique */
+    pthread_mutex_lock(args->mutex);
+    //printf("Prise mutex Thread: %d %d\n", args->i, args->j);
+
+    if(*(args->n) <= args->nb_generations){
+
+      if((noerr = automate_cellule_evoluer(args->automate, automate_get(args->automate, args->i, args->j), &(args->regles)))){
+        fprintf(stderr, "%s : Pb evolution  cellule [%d,%d], sortie erreur %d\n", "Thread", args->i, args->j, noerr);
+	      err_print(noerr); 
+        pthread_mutex_unlock(args->mutex);
+        pthread_exit(0); 
+      }
+
+      /* Affichage */
+      system("clear") ;
+      printf("ASYCHRONE SANS MEMOIRE : Generation %d\n", *(args->n)); 
+      automate_print(stdout, args->automate);
+      usleep(50000);
+
+      /* Passage à la prochaine génération (une seule cellule change) */
+      if((noerr = automate_generer(args->automate))){
+        fprintf(stderr, "%s : Pb prise en compte nouvelle generation automate, sortie erreur %d\n", "Thread", noerr);
+	      err_print(noerr);  
+        pthread_mutex_unlock(args->mutex);
+        pthread_exit(0); 
+      }
+
+      *(args->n) += 1;
+
+    }else{
+      fini = VRAI;
+    }
+
+    //printf("Libère mutex Thread: %d %d\n", args->i, args->j);
+    pthread_mutex_unlock(args->mutex);
+    /* Sortie section critique */
+    
+    usleep(1);
+
+  }
+
+  pthread_exit(NULL);
+
+}
 
 /*
  * Verifie si toutes les coordonnées d'une liste appartiennent à un automate
@@ -208,6 +284,51 @@ main( int argc , char * argv[] )
   /********************************/
   /* Gestion des cellules A FAIRE */
   /********************************/
+
+  int i, j;
+  pthread_t threads_id[hauteur][largeur];
+  args_t args[hauteur][largeur];
+  pthread_attr_t attr;
+
+  /* Mutex */
+  pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+  /* Variable critique */
+  int n = 1;
+
+  /* arguments */
+  args_t args_p;
+  args_p.automate = automate;
+  args_p.n = &n;
+  args_p.nb_generations = nb_generations;
+  args_p.regles = regles;
+  args_p.mutex = &mutex;
+
+  pthread_attr_init(&attr);
+  /* Valeur par défaut : pthread_attr_setscope(&attr, PTHREAD_SCOPE_PROCESS); */
+
+  /* Lancement d'un thread par cellule */
+  for(i = 0; i < hauteur; i++){
+    for(j = 0; j < largeur; j++){
+
+        args_p.i = i;
+        args_p.j = j;
+        args[i][j] = args_p;
+        pthread_create(&threads_id[i][j], &attr, (void *)calcule_gen_suiv, &args[i][j]);
+
+    }
+  }
+  
+  /* Attente de la fin de tous les threads */
+  for(i = 0; i < hauteur; i++){
+    for(j = 0; j < largeur; j++){
+
+      pthread_join(threads_id[i][j], NULL);
+
+    }
+  }
+
+  pthread_mutex_destroy(&mutex);
   
   /* ----- */
 

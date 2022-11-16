@@ -40,6 +40,8 @@ void calcule_gen_suiv(void * arguments){
 
   while(!fini){
 
+    usleep(random()%10000);
+
     /* Entrée section critique */
     pthread_mutex_lock(args->mutex);
     //printf("Prise mutex Thread: %d %d\n", args->i, args->j);
@@ -57,7 +59,7 @@ void calcule_gen_suiv(void * arguments){
       system("clear") ;
       printf("ASYCHRONE SANS MEMOIRE : Generation %d\n", *(args->n)); 
       automate_print(stdout, args->automate);
-      usleep(50000);
+      usleep(100000);
 
       /* Passage à la prochaine génération (une seule cellule change) */
       if((noerr = automate_generer(args->automate))){
@@ -76,8 +78,7 @@ void calcule_gen_suiv(void * arguments){
     //printf("Libère mutex Thread: %d %d\n", args->i, args->j);
     pthread_mutex_unlock(args->mutex);
     /* Sortie section critique */
-    
-    usleep(1);
+
 
   }
 
@@ -305,7 +306,9 @@ main( int argc , char * argv[] )
   args_p.mutex = &mutex;
 
   pthread_attr_init(&attr);
+  pthread_setconcurrency(hauteur * largeur);
   /* Valeur par défaut : pthread_attr_setscope(&attr, PTHREAD_SCOPE_PROCESS); */
+  pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
 
   /* Lancement d'un thread par cellule */
   for(i = 0; i < hauteur; i++){
@@ -328,6 +331,7 @@ main( int argc , char * argv[] )
     }
   }
 
+  pthread_attr_destroy(&attr);
   pthread_mutex_destroy(&mutex);
 
   //system("clear") ;
