@@ -306,7 +306,6 @@ main( int argc , char * argv[] )
   args_p.mutex = &mutex;
 
   pthread_attr_init(&attr);
-  pthread_setconcurrency(hauteur * largeur);
   /* Valeur par défaut : pthread_attr_setscope(&attr, PTHREAD_SCOPE_PROCESS); */
   pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
 
@@ -333,10 +332,6 @@ main( int argc , char * argv[] )
 
   pthread_attr_destroy(&attr);
   pthread_mutex_destroy(&mutex);
-
-  //system("clear") ;
-  printf("ASYCHRONE SANS MEMOIRE : Generation %d\n", n-1); 
-  automate_print(stdout, automate);
 
   /* ----- */
 

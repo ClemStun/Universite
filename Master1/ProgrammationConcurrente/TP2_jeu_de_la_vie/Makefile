@@ -15,6 +15,7 @@ all :
 	cd $(DirAutomate) ; make -f Makefile all ; cd $(top_dir)
 	cd $(DirEcran) ; make -f Makefile all ; cd $(top_dir)
 	cd $(DirProgStandard) ; make -f Makefile all ; cd $(top_dir) 
+	cd $(DirProgConcurrente) ; make -f Makefile all ; cd $(top_dir) 
 
 clean :
 	- find . -name "*~" -exec rm {} \;
@@ -24,6 +25,7 @@ clean :
 	cd $(DirAutomate) ; make -f Makefile clean ; cd $(top_dir)
 	cd $(DirEcran) ; make -f Makefile clean ; cd $(top_dir)
 	cd $(DirProgStandard) ; make -f Makefile clean ; cd $(top_dir)
+	cd $(DirProgConcurrente) ; make -f Makefile clean ; cd $(top_dir)
 
 tags :
 	etags */*.c */*.h -o TAGS_JEUVIE

@@ -5,6 +5,9 @@
 #include <automate_stdio.h>
 #include <coords_stdio.h>
 
+int cpt = 0;
+int nb_cellule = 0;
+
 /* Argumtent de la fonction calcule_gen_suiv */
 typedef struct args_s{
 
@@ -12,13 +15,21 @@ typedef struct args_s{
   int j; //abscisse de la cellule qui évolue
   automate_t * automate; //pointeur sur l'automate -- variable critique commun à tout les threads --
   int * n; //pointeur sur le numéro de la génération en cours -- variable critique commun à tout les threads --
-  int * n_c; //pointeur sur le nombre de cellules déjà modifiés pour cette génération -- variable critique commun à tout les threads --
   int nb_generations; //nombre de génération
-  int nb_cellule; //nombre de cellule dans l'automate
   cellule_regles_t regles; //regles de l'automate
   pthread_mutex_t * mutex; //mutex des threads
+  pthread_barrier_t * barriere; //barrière d'attente pour les threads
 
 } args_t;
+
+typedef struct args_c_s{
+
+  int * n; //pointeur sur le numéro de la génération en cours -- variable critique commun à tout les threads --
+  int nb_generations; //nombre de génération
+  pthread_mutex_t * mutex; //mutex des threads
+  pthread_barrier_t * barriere; //barrière d'attente pour les threads
+
+} args_c_t;
 
 /*!
  * \file automate_asynchrone_memoire_stdio.c
@@ -42,6 +53,8 @@ void calcule_gen_suiv(void * arguments){
 
   while(!fini){
 
+    usleep((random()%10000)+1);
+
     /* Entrée section critique */
     pthread_mutex_lock(args->mutex);
     //printf("Prise mutex Thread: %d %d\n", args->i, args->j);
@@ -57,9 +70,11 @@ void calcule_gen_suiv(void * arguments){
 
       /* Affichage */
       system("clear") ;
-      printf("ASYCHRONE SANS MEMOIRE : Generation %d\n", *(args->n)); 
+
+      cpt++;
+      printf("ASYCHRONE AVEC MEMOIRE : Generation %d (%d/%d cellules)\n", *(args->n), cpt, nb_cellule); 
       automate_print(stdout, args->automate);
-      usleep(50000);
+      usleep(100000);
 
       /* Passage à la prochaine génération (une seule cellule change) */
       if((noerr = automate_generer(args->automate))){
@@ -69,8 +84,6 @@ void calcule_gen_suiv(void * arguments){
         pthread_exit(0); 
       }
 
-      *(args->n) += 1;
-
     }else{
       fini = VRAI;
     }
@@ -78,11 +91,32 @@ void calcule_gen_suiv(void * arguments){
     //printf("Libère mutex Thread: %d %d\n", args->i, args->j);
     pthread_mutex_unlock(args->mutex);
     /* Sortie section critique */
-    
-    usleep(1);
+    pthread_barrier_wait(args->barriere);
 
   }
 
+  pthread_exit(NULL);
+
+}
+
+void passage_gen(void * arguments){
+
+  args_c_t * args = (args_c_t *)arguments;
+
+  while((*args->n) <= args->nb_generations){
+
+    pthread_barrier_wait(args->barriere);
+
+    pthread_mutex_lock(args->mutex);
+
+    (*args->n)++;
+    cpt = 0;
+
+    pthread_mutex_unlock(args->mutex);
+
+  }
+
+  pthread_barrier_wait(args->barriere);
   pthread_exit(NULL);
 
 }
@@ -285,13 +319,23 @@ main( int argc , char * argv[] )
   /* Gestion des cellules A FAIRE */
   /********************************/
 
+  nb_cellule = hauteur*largeur;
+
   int i, j;
   pthread_t threads_id[hauteur][largeur];
-  args_t args[hauteur][largeur];
+  pthread_t thread_controle;
+
   pthread_attr_t attr;
+
+  args_t args[hauteur][largeur];
+  args_c_t args_controle;
 
   /* Mutex */
   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+  /* Barriere */
+  pthread_barrier_t barriere;
+  pthread_barrier_init(&barriere, NULL, hauteur*largeur+1);
 
   /* Variable critique */
   int n = 1;
@@ -303,6 +347,7 @@ main( int argc , char * argv[] )
   args_p.nb_generations = nb_generations;
   args_p.regles = regles;
   args_p.mutex = &mutex;
+  args_p.barriere = &barriere;
 
   pthread_attr_init(&attr);
   /* Valeur par défaut : pthread_attr_setscope(&attr, PTHREAD_SCOPE_PROCESS); */
@@ -319,6 +364,14 @@ main( int argc , char * argv[] )
     }
   }
   
+  /* Thread de controle des générations */
+  args_controle.n = &n;
+  args_controle.nb_generations = nb_generations;
+  args_controle.mutex = &mutex;
+  args_controle.barriere = &barriere;
+
+  pthread_create(&thread_controle, &attr, (void *)passage_gen, &args_controle);
+
   /* Attente de la fin de tous les threads */
   for(i = 0; i < hauteur; i++){
     for(j = 0; j < largeur; j++){
@@ -328,7 +381,10 @@ main( int argc , char * argv[] )
     }
   }
 
+  pthread_join(thread_controle, NULL);
+
   pthread_mutex_destroy(&mutex);
+  pthread_barrier_destroy(&barriere);
   
   /* ----- */
 

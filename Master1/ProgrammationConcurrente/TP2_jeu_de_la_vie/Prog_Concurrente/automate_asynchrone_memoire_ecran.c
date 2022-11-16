@@ -5,6 +5,32 @@
 #include <automate_ecran.h>
 #include <coords_stdio.h>
 
+int cpt = 0;
+int nb_cellule = 0;
+
+/* Argumtent de la fonction calcule_gen_suiv */
+typedef struct args_s{
+
+  int i; //ordonnée de la cellule qui évolue
+  int j; //abscisse de la cellule qui évolue
+  automate_t * automate; //pointeur sur l'automate -- variable critique commun à tout les threads --
+  int * n; //pointeur sur le numéro de la génération en cours -- variable critique commun à tout les threads --
+  int nb_generations; //nombre de génération
+  cellule_regles_t regles; //regles de l'automate
+  pthread_mutex_t * mutex; //mutex des threads
+  pthread_barrier_t * barriere; //barrière d'attente pour les threads
+
+} args_t;
+
+typedef struct args_c_s{
+
+  int * n; //pointeur sur le numéro de la génération en cours -- variable critique commun à tout les threads --
+  int nb_generations; //nombre de génération
+  pthread_mutex_t * mutex; //mutex des threads
+  pthread_barrier_t * barriere; //barrière d'attente pour les threads
+
+} args_c_t;
+
 /*
  * \file automate_asynchrone_memoire_ecran.c
  * \brief Exécution d'un Automate Asynchrone a Memoire avec sortie sur un écran géré par <code>ncurses</code>
@@ -21,6 +47,89 @@ void hand_arret( int sig )
   exit(0); 
 }
 
+/**
+ * Calcule la génération suivante
+ * les variables critiques sont uniquement gérer à l'intérieur de la section critique
+ *
+ * \param args arguments de la fonction
+ */
+void calcule_gen_suiv(void * arguments){
+
+  /* Récupération des arguments */
+  args_t * args = (args_t *)arguments;
+
+  booleen_t fini = FAUX;
+  int noerr = CORRECT;
+
+  char mess[STRING_LG_MAX];
+
+  while(!fini){
+
+    usleep((random()%10000)+1);
+
+    /* Entrée section critique */
+    pthread_mutex_lock(args->mutex);
+    //printf("Prise mutex Thread: %d %d\n", args->i, args->j);
+
+    if(*(args->n) <= args->nb_generations){
+
+      if((noerr = automate_cellule_evoluer(args->automate, automate_get(args->automate, args->i, args->j), &(args->regles)))){
+        fprintf(stderr, "%s : Pb evolution  cellule [%d,%d], sortie erreur %d\n", "Thread", args->i, args->j, noerr);
+	      err_print(noerr); 
+        pthread_mutex_unlock(args->mutex);
+        pthread_exit(0); 
+      }
+
+      /* Affichage */
+      cellule_wprint(Ecran, args->i, args->j, automate_get(args->automate, args->i, args->j), VRAI );
+      sprintf(mess, "ASYNC %d", *(args->n));
+      ecran_message_afficher(Ecran, mess);
+      usleep(100000);
+
+      /* Passage à la prochaine génération (une seule cellule change) */
+      if((noerr = automate_generer(args->automate))){
+        fprintf(stderr, "%s : Pb prise en compte nouvelle generation automate, sortie erreur %d\n", "Thread", noerr);
+	      err_print(noerr);  
+        pthread_mutex_unlock(args->mutex);
+        pthread_exit(0); 
+      }
+
+    }else{
+      fini = VRAI;
+    }
+
+    //printf("Libère mutex Thread: %d %d\n", args->i, args->j);
+    pthread_mutex_unlock(args->mutex);
+    /* Sortie section critique */
+    pthread_barrier_wait(args->barriere);
+
+  }
+
+  pthread_exit(NULL);
+
+}
+
+void passage_gen(void * arguments){
+
+  args_c_t * args = (args_c_t *)arguments;
+
+  while((*args->n) <= args->nb_generations){
+
+    pthread_barrier_wait(args->barriere);
+
+    pthread_mutex_lock(args->mutex);
+
+    (*args->n)++;
+    cpt = 0;
+
+    pthread_mutex_unlock(args->mutex);
+
+  }
+
+  pthread_barrier_wait(args->barriere);
+  pthread_exit(NULL);
+
+}
 
 /*
  * Verifie si toutes les coordonnées d'une liste appartiennent à un automate
@@ -228,10 +337,79 @@ main( int argc , char * argv[] )
 
   /* ---------- */
   
+  automate_wprint(Ecran, automate);
+
   /********************************/
   /* Gestion des cellules A FAIRE */
   /********************************/
   
+  nb_cellule = hauteur*largeur;
+
+  int i, j;
+  pthread_t threads_id[hauteur][largeur];
+  pthread_t thread_controle;
+
+  pthread_attr_t attr;
+
+  args_t args[hauteur][largeur];
+  args_c_t args_controle;
+
+  /* Mutex */
+  pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+  /* Barriere */
+  pthread_barrier_t barriere;
+  pthread_barrier_init(&barriere, NULL, hauteur*largeur+1);
+
+  /* Variable critique */
+  int n = 1;
+
+  /* arguments */
+  args_t args_p;
+  args_p.automate = automate;
+  args_p.n = &n;
+  args_p.nb_generations = nb_generations;
+  args_p.regles = regles;
+  args_p.mutex = &mutex;
+  args_p.barriere = &barriere;
+
+  pthread_attr_init(&attr);
+  /* Valeur par défaut : pthread_attr_setscope(&attr, PTHREAD_SCOPE_PROCESS); */
+
+  /* Lancement d'un thread par cellule */
+  for(i = 0; i < hauteur; i++){
+    for(j = 0; j < largeur; j++){
+
+        args_p.i = i;
+        args_p.j = j;
+        args[i][j] = args_p;
+        pthread_create(&threads_id[i][j], &attr, (void *)calcule_gen_suiv, &args[i][j]);
+
+    }
+  }
+  
+  /* Thread de controle des générations */
+  args_controle.n = &n;
+  args_controle.nb_generations = nb_generations;
+  args_controle.mutex = &mutex;
+  args_controle.barriere = &barriere;
+
+  pthread_create(&thread_controle, &attr, (void *)passage_gen, &args_controle);
+
+  /* Attente de la fin de tous les threads */
+  for(i = 0; i < hauteur; i++){
+    for(j = 0; j < largeur; j++){
+
+      pthread_join(threads_id[i][j], NULL);
+
+    }
+  }
+
+  pthread_join(thread_controle, NULL);
+
+  pthread_mutex_destroy(&mutex);
+  pthread_barrier_destroy(&barriere);
+
   /* ---------- */
   
   /*  Destruction de l'écran  */
