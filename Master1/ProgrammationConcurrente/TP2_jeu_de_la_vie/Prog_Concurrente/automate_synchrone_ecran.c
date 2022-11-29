@@ -61,7 +61,7 @@ void calcule_gen_suiv(void * arguments){
 
   while(!fini){
 
-    usleep((random()%10000)+1);
+    usleep((random()%10000)+10);
 
     /* Entrée section critique */
     pthread_mutex_lock(args->mutex);
@@ -104,7 +104,7 @@ void passage_gen(void * arguments){
 
     /* Affichage */
     automate_wprint(Ecran, args->automate);
-    sprintf(mess, "ASYNC %d", *(args->n));
+    sprintf(mess, "SYNC %d", *(args->n));
     ecran_message_afficher(Ecran, mess);
     usleep(100000);
 

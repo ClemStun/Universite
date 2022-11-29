@@ -94,7 +94,7 @@ void passage_gen(void * arguments){
     /* Affichage */
     system("clear") ;
 
-    printf("ASYCHRONE AVEC MEMOIRE : Generation %d\n", *(args->n)); 
+    printf("SYCHRONE : Generation %d\n", *(args->n)); 
     automate_print(stdout, args->automate);
     usleep(100000);
 

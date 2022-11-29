@@ -79,11 +79,11 @@ void calcule_gen_suiv(void * arguments){
         pthread_mutex_unlock(args->mutex);
         pthread_exit(0); 
       }
-
+      cpt++;
       /* Affichage */
-      cellule_wprint(Ecran, args->i, args->j, automate_get(args->automate, args->i, args->j), VRAI );
-      sprintf(mess, "ASYNC %d", *(args->n));
-      ecran_message_afficher(Ecran, mess);
+      cellule_wprint( Ecran , args->i , args->j , automate_get( args->automate , args->i , args->j ) , VRAI ) ; 
+	      sprintf( mess , "AS. MEM %d(%d/%d)" , *args->n , cpt, nb_cellule ) ; 
+	      ecran_message_afficher( Ecran , mess ) ;
       usleep(100000);
 
       /* Passage à la prochaine génération (une seule cellule change) */
@@ -363,7 +363,7 @@ main( int argc , char * argv[] )
 
   /* Variable critique */
   int n = 1;
-
+  nb_cellule = hauteur*largeur;
   /* arguments */
   args_t args_p;
   args_p.automate = automate;

@@ -38,10 +38,10 @@ typedef struct args_c_s{
  */
 
 /**
- * Calcule la génération suivante
+ * Calcule l'état suivant de la cellule
  * les variables critiques sont uniquement gérer à l'intérieur de la section critique
  *
- * \param args arguments de la fonction
+ * \param arguments arguments de la fonction
  */
 void calcule_gen_suiv(void * arguments){
 
@@ -57,7 +57,6 @@ void calcule_gen_suiv(void * arguments){
 
     /* Entrée section critique */
     pthread_mutex_lock(args->mutex);
-    //printf("Prise mutex Thread: %d %d\n", args->i, args->j);
 
     if(*(args->n) <= args->nb_generations){
 
@@ -88,9 +87,10 @@ void calcule_gen_suiv(void * arguments){
       fini = VRAI;
     }
 
-    //printf("Libère mutex Thread: %d %d\n", args->i, args->j);
     pthread_mutex_unlock(args->mutex);
     /* Sortie section critique */
+
+    /* Attendre que toutes les cellules aient joué */
     pthread_barrier_wait(args->barriere);
 
   }
@@ -99,20 +99,30 @@ void calcule_gen_suiv(void * arguments){
 
 }
 
+/**
+ * Passe à la génération suivante une fois que toutes les cellules ont évolué une fois
+ *  
+ * \param arguments arguments de la fonction
+ */
 void passage_gen(void * arguments){
 
+  /* Récupération des arguments */
   args_c_t * args = (args_c_t *)arguments;
 
   while((*args->n) <= args->nb_generations){
 
+    /* Attendre que toutes les cellules aient évolué*/
     pthread_barrier_wait(args->barriere);
 
+    /* Entrée section critique */
     pthread_mutex_lock(args->mutex);
 
+    /* Incrémentation de la génération */
     (*args->n)++;
     cpt = 0;
 
     pthread_mutex_unlock(args->mutex);
+    /* Sortie section critique */
 
   }
 

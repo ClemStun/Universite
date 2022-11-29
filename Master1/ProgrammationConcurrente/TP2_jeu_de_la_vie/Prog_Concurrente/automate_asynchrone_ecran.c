@@ -52,14 +52,14 @@ void calcule_gen_suiv(void * arguments){
 
   while(!fini){
 
-    usleep(random()%10000);
+    usleep(random()%10000); //Permet de randomiser les threads qui prennent le mutex 
 
     /* Entrée section critique */
     pthread_mutex_lock(args->mutex);
-    //printf("Prise mutex Thread: %d %d\n", args->i, args->j);
 
     if(*(args->n) <= args->nb_generations){
 
+      /* Calcul du prochain état de la cellule */
       if((noerr = automate_cellule_evoluer(args->automate, automate_get(args->automate, args->i, args->j), &(args->regles)))){
         fprintf(stderr, "%s : Pb evolution  cellule [%d,%d], sortie erreur %d\n", "Thread", args->i, args->j, noerr);
 	      err_print(noerr); 
@@ -81,13 +81,13 @@ void calcule_gen_suiv(void * arguments){
         pthread_exit(0); 
       }
 
+      /* Incrémentation de la génération */
       *(args->n) += 1;
 
     }else{
       fini = VRAI;
     }
 
-    //printf("Libère mutex Thread: %d %d\n", args->i, args->j);
     pthread_mutex_unlock(args->mutex);
     /* Sortie section critique */
 
@@ -299,14 +299,16 @@ main( int argc , char * argv[] )
       exit(-1);
     }
 
-  /*----------*/
+  /*----------*/  
+
+  automate_wprint(Ecran, automate); 
 
   /********************************/
   /* Gestion des cellules A FAIRE */
   /********************************/
   int i, j;
-  pthread_t threads_id[hauteur][largeur];
-  args_t args[hauteur][largeur];
+  pthread_t threads_id[hauteur][largeur]; //Threads des cellules
+  args_t args[hauteur][largeur]; //Arguments des threads permet de garder les copies 
   pthread_attr_t attr;
 
   /* Mutex */
@@ -315,7 +317,7 @@ main( int argc , char * argv[] )
   /* Variable critique */
   int n = 1;
 
-  /* arguments */
+  /* Arguments */
   args_t args_p;
   args_p.automate = automate;
   args_p.n = &n;
@@ -326,8 +328,6 @@ main( int argc , char * argv[] )
   pthread_attr_init(&attr);
   /* Valeur par défaut : pthread_attr_setscope(&attr, PTHREAD_SCOPE_PROCESS); */
   pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
-
-  automate_wprint(Ecran, automate); 
 
   /* Lancement d'un thread par cellule */
   for(i = 0; i < hauteur; i++){
@@ -350,6 +350,7 @@ main( int argc , char * argv[] )
     }
   }
 
+  /* Destruction des éléments liées aux threads */
   pthread_attr_destroy(&attr);
   pthread_mutex_destroy(&mutex);
 
